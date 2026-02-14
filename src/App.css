@@ -251,7 +251,7 @@ body {
 
 .search-replace-bar {
   background: #16213e;
-  padding: 8px 16px;
+  padding: 8px 36px 8px 16px;
   display: flex;
   flex-direction: column;
   gap: 6px;

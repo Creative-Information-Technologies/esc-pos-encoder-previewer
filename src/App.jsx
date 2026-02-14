@@ -260,8 +260,14 @@ function SearchReplace({ code, onCodeChange, onClose, textareaRef }) {
     while ((match = regex.exec(code)) !== null) {
       if (i === index) {
         if (textareaRef && textareaRef.current) {
-          textareaRef.current.focus();
-          textareaRef.current.setSelectionRange(match.index, match.index + match[0].length);
+          const ta = textareaRef.current;
+          ta.focus();
+          ta.setSelectionRange(match.index, match.index + match[0].length);
+          const textBefore = code.substring(0, match.index);
+          const lineNumber = textBefore.split('\n').length - 1;
+          const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 20;
+          const targetScroll = lineNumber * lineHeight - ta.clientHeight / 2;
+          ta.scrollTop = Math.max(0, targetScroll);
           searchInputRef.current.focus();
         }
         break;
