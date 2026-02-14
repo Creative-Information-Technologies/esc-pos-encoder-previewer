@@ -1,6 +1,35 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import './App.css'
 
+function preprocessCode(code) {
+  let processed = code;
+  if (processed.includes('\\n') && !processed.includes('\n.')) {
+    processed = processed.replace(/\\n/g, '\n');
+  }
+  processed = processed.replace(/;[\s]*\n/g, '\n');
+  processed = processed.replace(/;\s*$/gm, '');
+  processed = processed
+    .replace(/\/\/[^\n'"]*/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  processed = processed.replace(/try\s*\{/g, '');
+  processed = processed.replace(/\}\s*catch\s*\([^)]*\)\s*\{[\s\S]*?\}/g, '');
+  processed = processed.replace(/const\s+\w+\s*=\s*new\s+Image\(\)\s*/g, '');
+  processed = processed.replace(/\w+\.\w+\s*=\s*[^;.]+(?=;|$)/gm, '');
+  processed = processed.replace(/\w+\.onload\s*=\s*\(\)\s*=>\s*\{/g, '');
+  processed = processed.replace(/\w+\.onerror\s*=\s*\(\)\s*=>\s*\{/g, '');
+  processed = processed.replace(/resolve\s*\([^)]*\)\s*/g, '');
+  processed = processed.replace(/^\s*(result|let\s+result|var\s+result|const\s+result)\s*=\s*/gm, '');
+  processed = processed.replace(/^\s*result\s*=\s*result\s*/gm, '');
+  processed = processed.replace(/if\s*\([^)]*\)\s*\{[^}]*\}/g, '');
+  processed = processed.replace(/if\s*\([^)]*\)\s*\{\s*\n/g, '');
+  processed = processed.replace(/else\s*\{[^}]*\}/g, '');
+  processed = processed.replace(/else\s*\{\s*\n/g, '');
+  processed = processed.replace(/for\s*\([^)]*\)\s*\{[^}]*\}/g, '');
+  processed = processed.replace(/\}\s*;?\s*$/gm, '');
+  processed = processed.replace(/^\s*\}\s*$/gm, '');
+  return processed;
+}
+
 function parseEscPosCode(code) {
   const elements = [];
   let state = {
@@ -33,19 +62,9 @@ function parseEscPosCode(code) {
     });
   }
 
-  const cleaned = code
-    .replace(/\/\/.*$/gm, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/try\s*\{/g, '')
-    .replace(/\}\s*catch\s*\([^)]*\)\s*\{[^}]*\}/g, '')
-    .replace(/const\s+\w+\s*=\s*new\s+Image\(\);/g, '')
-    .replace(/image\.\w+\s*=\s*[^;]+;/g, '')
-    .replace(/image\.onload\s*=\s*\(\)\s*=>\s*\{/g, '')
-    .replace(/image\.onerror\s*=\s*\(\)\s*=>\s*\{/g, '')
-    .replace(/resolve\s*\([^)]*\)\s*;/g, '')
-    .replace(/\}\s*;?\s*$/g, '');
+  const cleaned = preprocessCode(code);
 
-  const methodRegex = /\.(initialize|align|bold|text|line|newline|size|image|codepage|cut|raw|encode)\s*\(([^)]*)\)/g;
+  const methodRegex = /\.(?:encoder\.)?(initialize|align|bold|text|line|newline|size|image|codepage|cut|raw|encode)\s*\(([^)]*)\)/g;
 
   let match;
   while ((match = methodRegex.exec(cleaned)) !== null) {
@@ -98,8 +117,7 @@ function parseEscPosCode(code) {
           });
         } else {
           const exprParts = [];
-          let remaining = rawArgs.trim();
-          const concatParts = remaining.split(/\s*\+\s*/);
+          const concatParts = rawArgs.trim().split(/\s*\+\s*/);
           for (const part of concatParts) {
             const p = part.trim();
             if ((p.startsWith("'") && p.endsWith("'")) || (p.startsWith('"') && p.endsWith('"'))) {
@@ -110,11 +128,11 @@ function parseEscPosCode(code) {
                 const pts = inner.split('.');
                 return `[${pts[pts.length - 1]}]`;
               }));
-            } else if (p.includes("' '.repeat(")) {
+            } else if (p.includes("' '.repeat(") || p.includes("repeat(")) {
               const repeatMatch = p.match(/(\d+)/);
               const count = repeatMatch ? Math.min(Number(repeatMatch[1]), 48) : 5;
               exprParts.push(' '.repeat(Math.max(1, Math.floor(count / 3))));
-            } else if (p === "''") {
+            } else if (p === "''" || p === '""') {
               exprParts.push('');
             } else {
               const varParts = p.split('.');
@@ -206,6 +224,77 @@ function parseEscPosCode(code) {
   return elements;
 }
 
+function SearchReplace({ code, onCodeChange, onClose }) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [replaceTerm, setReplaceTerm] = useState('');
+  const [matchCount, setMatchCount] = useState(0);
+  const searchInputRef = useRef(null);
+
+  useEffect(() => {
+    if (searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (searchTerm) {
+      const escaped = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const matches = code.match(new RegExp(escaped, 'gi'));
+      setMatchCount(matches ? matches.length : 0);
+    } else {
+      setMatchCount(0);
+    }
+  }, [searchTerm, code]);
+
+  const handleReplace = () => {
+    if (!searchTerm) return;
+    const escaped = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const newCode = code.replace(new RegExp(escaped, 'i'), replaceTerm);
+    onCodeChange(newCode);
+  };
+
+  const handleReplaceAll = () => {
+    if (!searchTerm) return;
+    const escaped = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const newCode = code.replace(new RegExp(escaped, 'gi'), replaceTerm);
+    onCodeChange(newCode);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      onClose();
+    }
+  };
+
+  return (
+    <div className="search-replace-bar" onKeyDown={handleKeyDown}>
+      <div className="search-row">
+        <input
+          ref={searchInputRef}
+          type="text"
+          className="search-input"
+          placeholder="Buscar..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+        <span className="match-count">{matchCount} encontrados</span>
+      </div>
+      <div className="search-row">
+        <input
+          type="text"
+          className="search-input"
+          placeholder="Reemplazar con..."
+          value={replaceTerm}
+          onChange={(e) => setReplaceTerm(e.target.value)}
+        />
+        <button className="search-btn" onClick={handleReplace}>Reemplazar</button>
+        <button className="search-btn" onClick={handleReplaceAll}>Reemplazar todo</button>
+      </div>
+      <button className="search-close" onClick={onClose}>X</button>
+    </div>
+  );
+}
+
 function ReceiptPreview({ elements }) {
   if (!elements || elements.length === 0) {
     return (
@@ -263,7 +352,7 @@ function ReceiptPreview({ elements }) {
   );
 }
 
-const SAMPLE_CODE = `result = encoder
+const SAMPLE_CODE = `encoder
   .initialize()
   .align('center')
   .image(image, 400, 240, 'atkinson', 1)
@@ -414,6 +503,7 @@ function App() {
   const [elements, setElements] = useState(() => parseEscPosCode(SAMPLE_CODE));
   const [error, setError] = useState(null);
   const [autoPreview, setAutoPreview] = useState(true);
+  const [showSearch, setShowSearch] = useState(false);
   const debounceRef = useRef(null);
 
   const doParse = useCallback((input) => {
@@ -426,14 +516,31 @@ function App() {
     }
   }, []);
 
-  const handleCodeChange = useCallback((e) => {
-    const val = e.target.value;
+  const handleCodeChange = useCallback((val) => {
     setCode(val);
     if (autoPreview) {
       clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => doParse(val), 300);
     }
   }, [autoPreview, doParse]);
+
+  const handleTextareaChange = useCallback((e) => {
+    handleCodeChange(e.target.value);
+  }, [handleCodeChange]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        setShowSearch((prev) => !prev);
+      }
+      if (e.key === 'Escape' && showSearch) {
+        setShowSearch(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showSearch]);
 
   useEffect(() => {
     return () => clearTimeout(debounceRef.current);
@@ -458,19 +565,30 @@ function App() {
                 Renderizar
               </button>
             )}
+            <button className="search-toggle-btn" onClick={() => setShowSearch((p) => !p)} title="Buscar y Reemplazar (Ctrl+F)">
+              Buscar
+            </button>
           </div>
         </div>
+        {showSearch && (
+          <SearchReplace
+            code={code}
+            onCodeChange={handleCodeChange}
+            onClose={() => setShowSearch(false)}
+          />
+        )}
         {error && <div className="error-msg">Error: {error}</div>}
         <textarea
           className="editor-textarea"
           value={code}
-          onChange={handleCodeChange}
-          placeholder={`Pega tu codigo ESC/POS encoder aqui...\n\nEjemplo:\nresult = encoder\n  .initialize()\n  .align('center')\n  .bold(true)\n  .line('Mi Negocio')\n  .bold(false)\n  .text('Hola mundo')\n  .newline()\n  .cut()\n  .encode()`}
+          onChange={handleTextareaChange}
+          placeholder={`Pega tu codigo ESC/POS encoder aqui...\n\nSoporta:\n- Codigo con .line(), .text(), .bold(), etc.\n- Codigo con \\n (una sola linea)\n- No necesitas poner result = \n\nCtrl+F para buscar y reemplazar`}
           spellCheck={false}
         />
         <div className="status-bar">
           <span>{code.length} caracteres</span>
           <span>{elements.length} elementos renderizados</span>
+          <span>Ctrl+F: Buscar/Reemplazar</span>
         </div>
       </div>
       <div className="preview-panel">
