@@ -224,10 +224,11 @@ function parseEscPosCode(code) {
   return elements;
 }
 
-function SearchReplace({ code, onCodeChange, onClose }) {
+function SearchReplace({ code, onCodeChange, onClose, textareaRef }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [replaceTerm, setReplaceTerm] = useState('');
   const [matchCount, setMatchCount] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const searchInputRef = useRef(null);
 
   useEffect(() => {
@@ -240,11 +241,48 @@ function SearchReplace({ code, onCodeChange, onClose }) {
     if (searchTerm) {
       const escaped = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const matches = code.match(new RegExp(escaped, 'gi'));
-      setMatchCount(matches ? matches.length : 0);
+      const count = matches ? matches.length : 0;
+      setMatchCount(count);
+      if (count === 0) setCurrentIndex(0);
+      else if (currentIndex >= count) setCurrentIndex(0);
     } else {
       setMatchCount(0);
+      setCurrentIndex(0);
     }
   }, [searchTerm, code]);
+
+  const goToMatch = (index) => {
+    if (!searchTerm || matchCount === 0) return;
+    const escaped = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escaped, 'gi');
+    let match;
+    let i = 0;
+    while ((match = regex.exec(code)) !== null) {
+      if (i === index) {
+        if (textareaRef && textareaRef.current) {
+          textareaRef.current.focus();
+          textareaRef.current.setSelectionRange(match.index, match.index + match[0].length);
+          searchInputRef.current.focus();
+        }
+        break;
+      }
+      i++;
+    }
+  };
+
+  const handleNext = () => {
+    if (matchCount === 0) return;
+    const next = (currentIndex + 1) % matchCount;
+    setCurrentIndex(next);
+    goToMatch(next);
+  };
+
+  const handlePrev = () => {
+    if (matchCount === 0) return;
+    const prev = (currentIndex - 1 + matchCount) % matchCount;
+    setCurrentIndex(prev);
+    goToMatch(prev);
+  };
 
   const handleReplace = () => {
     if (!searchTerm) return;
@@ -264,6 +302,11 @@ function SearchReplace({ code, onCodeChange, onClose }) {
     if (e.key === 'Escape') {
       onClose();
     }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (e.shiftKey) handlePrev();
+      else handleNext();
+    }
   };
 
   return (
@@ -275,9 +318,11 @@ function SearchReplace({ code, onCodeChange, onClose }) {
           className="search-input"
           placeholder="Buscar..."
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={(e) => { setSearchTerm(e.target.value); setCurrentIndex(0); }}
         />
-        <span className="match-count">{matchCount} encontrados</span>
+        <span className="match-count">{matchCount > 0 ? `${currentIndex + 1}/${matchCount}` : '0 encontrados'}</span>
+        <button className="search-nav-btn" onClick={handlePrev} title="Anterior (Shift+Enter)">&lt;</button>
+        <button className="search-nav-btn" onClick={handleNext} title="Siguiente (Enter)">&gt;</button>
       </div>
       <div className="search-row">
         <input
@@ -505,6 +550,7 @@ function App() {
   const [autoPreview, setAutoPreview] = useState(true);
   const [showSearch, setShowSearch] = useState(false);
   const debounceRef = useRef(null);
+  const textareaRef = useRef(null);
 
   const doParse = useCallback((input) => {
     try {
@@ -575,10 +621,12 @@ function App() {
             code={code}
             onCodeChange={handleCodeChange}
             onClose={() => setShowSearch(false)}
+            textareaRef={textareaRef}
           />
         )}
         {error && <div className="error-msg">Error: {error}</div>}
         <textarea
+          ref={textareaRef}
           className="editor-textarea"
           value={code}
           onChange={handleTextareaChange}
