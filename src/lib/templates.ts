@@ -313,4 +313,71 @@ export const templates: Template[] = [
             .FontColor("#6B7280")
             .AlignCenter()`,
   },
+  {
+    name: 'Header Reporte',
+    description: 'Encabezado de reporte con logo, título y chips informativos (QuestPDF real)',
+    code: `using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
+using System.Net;
+
+void HeaderStyle(IContainer container)
+{
+    var logoUrl = "https://tudominio.com/images/yalocobro.png";
+    
+    byte[] logoBytes;
+    using (var client = new WebClient())
+        logoBytes = client.DownloadData(logoUrl);
+
+    container
+        .Padding(10)
+        .Background(Colors.Hex("#E6EEF5"))
+        .Border(1)
+        .BorderColor(Colors.Hex("#A7C7E7"))
+        .CornerRadius(12)
+        .Column(column =>
+        {
+            // Fila superior
+            column.Item().Row(row =>
+            {
+                row.ConstantItem(160)
+                    .Height(40)
+                    .Image(logoBytes);
+
+                row.RelativeItem()
+                    .AlignCenter()
+                    .AlignMiddle()
+                    .Text("Inventario: Ingresos Por Productos")
+                    .FontSize(18)
+                    .Bold()
+                    .FontColor(Colors.Hex("#1E3A5F"));
+
+                row.ConstantItem(200)
+                    .AlignRight()
+                    .AlignMiddle()
+                    .Text("Generado: 26/02/2026 7:33 pm")
+                    .FontSize(10)
+                    .FontColor(Colors.Hex("#334155"));
+            });
+
+            column.Item().PaddingTop(10);
+
+            // Chips informativos
+            column.Item().Row(row =>
+            {
+                row.RelativeItem().Element(ChipStyle)
+                    .Text("Del 2026-02-26 00:00 al 2026-02-26 23:59")
+                    .FontSize(10);
+
+                row.RelativeItem().PaddingLeft(10).Element(ChipStyle)
+                    .Text("Generado por: Erick Alvarado")
+                    .FontSize(10);
+
+                row.RelativeItem().PaddingLeft(10).Element(ChipStyle)
+                    .Text("Nombre Organización: COMPANY EA")
+                    .FontSize(10);
+            });
+        });
+}`,
+  },
 ];
